@@ -1,11 +1,13 @@
 ---
-title: "Assignment 9: Spatial Analysis in R"
-author: "Student Name"
-output: pdf_document
+title: 'Assignment 9: Spatial Analysis in R'
+author: "Autumn Dunn"
 geometry: margin=2.54cm
-editor_options: 
+output:
+  pdf_document: default
+always_allow_html: yes
+editor_options:
   chunk_output_type: console
-  markdown: 
+  markdown:
     wrap: 72
 ---
 
@@ -30,11 +32,12 @@ This exercise accompanies the lessons in Environmental Data Analytics (ENV872L) 
 
 ```{r Prepare workspace}
 #1.
-
+getwd()
 
 #2. 
-
-
+#install packages and add to library
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, dplyr, lubridate, sf, leaflet, mapview, readr, cowplot)
 ```
 
 ### Read (and filter) county features into an sf dataframe and plot
@@ -47,20 +50,19 @@ In this exercise, we will be exploring stream gage height data in Nebraska corre
 
 ```{r Read the county data into an sf dataframe}
 #3. Read in Counties shapefile into an sf dataframe, filtering for just NE counties
-
+counties_sf<- st_read('../Data/Spatial/cb_2018_us_county_20m.shp') %>% 
+  filter(STATEFP == 31) #Filter for just NE Counties
 
 #4. Reveal the CRS of the counties features
-
+st_crs(counties_sf) 
 
 #5. Plot the data
-
+mapView(counties_sf, zcol = "AWATER")
 ```
 
 6. What is the EPSG code of the Counties dataset? Is this a geographic or a projected coordinate reference system? (Or, does this CRS use angular or planar coordinate units?) To what datum is this CRS associated? (Tip: look the EPSG code on <https://spatialreference.org>) 
 
-> ANSWER: 
-> 
-
+> ANSWER: EPSG code 4269, geographic coordinate system - NAD83, Datum - "North American Datum 1983"
 
 ### Read in gage locations csv as a dataframe, then display the column names it contains
 
@@ -72,15 +74,14 @@ Next we'll read in some USGS/NWIS gage location data added to the `Data/Raw` fol
 
 ```{r Read in USGS Gage Locations}
 #7. Read in gage locations csv as a dataframe
-
+NWIS <- read_csv('../Data/Raw/NWIS_SiteInfo_NE_RAW.csv')
 
 #8. Reveal the names of the columns
-
-
+colnames(NWIS)
 ```
 
 9. What columns in the dataset contain the x and y coordinate values, respectively?  
-> ANSWER:
+> ANSWER: x = dec_long_va, y = dec_lat_va
 > 
 
 
@@ -93,17 +94,18 @@ Next we'll read in some USGS/NWIS gage location data added to the `Data/Raw` fol
 
 ```{r Convert dataframe to sf dataframe}
 #10. Convert to an sf object
-
+sf_NWIS <- st_as_sf(NWIS,
+                    coords = c('dec_long_va','dec_lat_va'),
+                    crs=4269)
 
 #11. Re-examine the column names
-
-
+colnames(sf_NWIS)
 ```
 
 12. What new field(s) appear in the sf dataframe created? What field(s), if any, disappeared?
 
->ANSWER: 
->
+>ANSWER: Disappeared: dec_lat_va, dec_long_va. New fields: geometry. 
+> the lat and long columns were combine into geometry in the sf file
 
 
 ### Plot the gage locations on top of the counties
@@ -115,8 +117,12 @@ Next we'll read in some USGS/NWIS gage location data added to the `Data/Raw` fol
 
 ```{r Plot the spatial features}
 #13. Plot the gage locations atop the county features
-
-
+ggplot() + 
+  geom_sf(data = sf_NWIS) +
+  geom_sf(data = counties_sf, aes(fill = STATEFP), show.legend = FALSE, alpha=0.3)+   
+  labs(title = "NWIS Gage Locations in Nebraska",
+       subtitle = "Autumn Dunn") +
+  theme_map ()
 ```
 
 
@@ -134,19 +140,21 @@ Lastly, we want to attach some gage height data to our site locations. I've cons
 
 ```{r}
 #14. Read the site flow data into a data frame
-
+Flow_Date_NWIS <- read_csv('../Data/Raw/NWIS_SiteFlowData_NE_RAW.csv')
 
 #15. Show the column names
-
+colnames(Flow_Date_NWIS)
 
 #16. Join location data to it
-
+NWIS_sf_join <-  merge(x = sf_NWIS,
+                 y = Flow_Date_NWIS, 
+                 by = "site_no")
 
 #17. Show the column names of the joined dataset
-
+colnames(NWIS_sf_join)
 
 #18. Show the dimensions of this joined dataset
-
+dim(NWIS_sf_join)
 
 ```
 
@@ -158,11 +166,15 @@ Now we can examine where the flooding appears most acute by visualizing gage hei
 
 ```{r}
 #Map the points, sized by gage height
-
-
 #ggplot
-
-
+ggplot() + 
+  geom_sf(data = NWIS_sf_join, aes(color = gage_ht, size = gage_ht), alpha = 1) +
+  guides(size = FALSE) +
+  scale_color_continuous(name = "Gage Height") +
+  geom_sf(data = counties_sf, aes(fill = STATEFP), show.legend = FALSE, alpha=0.05)+   
+  labs(title = "NWIS 2019 Gage Heights in Nebraska",
+       subtitle = "Autumn Dunn") +
+  theme_map ()
 ```
 
 ---
@@ -179,11 +191,21 @@ Up next we will do some spatial analysis with our data. To prepare for this, we 
 
 ```{r}
 #20 Transform the counties and gage location datasets to UTM Zone 14
-
+sf_UTM_NWIS_join<- st_transform(NWIS_sf_join, crs=32614)
+sf_UTM_counties<- st_transform(counties_sf, crs=32614)
 
 #21 Plot the data
+ggplot() + 
+  geom_sf(data = sf_UTM_NWIS_join, aes(color = gage_ht, size = gage_ht), alpha = 1) +
+  guides(size = FALSE) +
+  scale_color_continuous(name = "Gage Height") +
+  geom_sf(data = sf_UTM_counties, aes(fill = STATEFP), show.legend = FALSE, alpha=0.05)+   
+  labs(title = "NWIS 2019 Gage Heights in Nebraska",
+       subtitle = "Autumn Dunn") +
+  theme_map ()
 
-
+mapView(sf_UTM_NWIS_join, zcol = "gage_ht") +
+  mapView(sf_UTM_counties)
 ```
 
 
@@ -200,13 +222,22 @@ Now let's zoom into a particular county and examine the gages located there.
 
 ```{r}
 #22 Select the county
-
+sf_UTM_lancaster <- sf_UTM_counties %>% 
+  filter(NAME %in% c("Lancaster"))
 
 #23 Select gages within the selected county
-
+sf_UTM_lancaster_NWIS <- sf_UTM_NWIS_join[sf_UTM_lancaster,] 
 
 #24 Plot
-
-
-
+ggplot() + 
+  geom_sf(data = sf_UTM_lancaster_NWIS,aes(shape = "Gage Station")) +
+  scale_shape_manual("", values=1) +
+  guides(shape = guide_legend(override.aes = list(size = 1))) +
+  geom_sf(data = sf_UTM_counties, show.legend = FALSE, alpha=0.01)+
+  geom_sf(data =sf_UTM_lancaster, aes(colour = "Lancaster County"), show.legend = TRUE, alpha=0.01) +
+  scale_colour_manual("", values="red") +
+  guides(colour = guide_legend(override.aes = list(color="red"))) +
+  labs(title = "NWIS Gage Locations in Lancaster, Nebraska",
+       subtitle = "Autumn Dunn") +
+  theme_map ()
 ```
